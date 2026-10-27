@@ -63,7 +63,7 @@ unsigned long lastTelemetry = 0;
 unsigned long telemetryPeriod = 50;     // ms
 unsigned long lastCmdMs = 0;
 
-// Closed-loop speed control (command V). Speeds are in encoder ticks per second.
+// Closed-loop speed control (commands M and V). Speeds are in encoder ticks per second.
 const unsigned long PID_PERIOD_MS = 20;
 bool  pidOn = false;
 float tgtL = 0, tgtR = 0;          // target speed, left and right pair
