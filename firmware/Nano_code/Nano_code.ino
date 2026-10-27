@@ -1,3 +1,17 @@
+/*
+ * Malkia Bots - Arduino Nano motor firmware (closed loop)
+ * Robotics Dojo 2026
+ *
+ * Talks to malkia_base/base_node.py on the Raspberry Pi over USB serial at 115200 baud.
+ *   Pi -> Nano : M <left> <right>   target speed per side, -255..255 (fraction of maxTps)
+ *                X                  stop
+ *                O / C              open / close the gate servo
+ *                H <gain>           gyro heading hold (0 = off)
+ *   Nano -> Pi : D,ms,ax,ay,az,gx,gy,gz,pitch,roll,yaw,enc_fl,enc_fr,enc_rl,enc_rr   every 50 ms
+ *
+ * Every 20 ms a PI loop holds each side at its target speed, measured by the wheel encoders.
+ * Full protocol, wiring and constants: firmware/README.md
+ */
 #include <Wire.h>
 #include <Servo.h>
 
