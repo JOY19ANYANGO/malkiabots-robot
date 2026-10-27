@@ -5,6 +5,7 @@ Runs on the Raspberry Pi 5. The YOLO model runs on the Hailo AI HAT; the camera
 is read locally from rpicam-vid (MJPEG on 127.0.0.1, never over WiFi).
 
 Publishes
+  /waste_type                   one reading per frame while enabled; the mission tree votes on it
   /waste/class                  stable decision: metal, organic, plastic or none
   /waste/station                matching station colour: red, green, blue or none
   /waste/image/compressed       annotated JPEG preview (sensor_msgs/CompressedImage)
