@@ -29,7 +29,9 @@ import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import NavigateThroughPoses, NavigateToPose
+from builtin_interfaces.msg import Duration
+from nav2_msgs.action import NavigateThroughPoses, NavigateToPose, Spin
+from rclpy.action import ActionClient
 from nav2_msgs.msg import CollisionMonitorState, SpeedLimit
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool, String
@@ -345,6 +347,74 @@ class ObstacleMonitor(py_trees.behaviour.Behaviour):
         return py_trees.common.Status.RUNNING
 
 
+class AlignYaw(py_trees.behaviour.Behaviour):
+    """Turn on the spot until the robot faces the pose's yaw within `tol_deg` (Nav2 'spin' behaviour).
+    Nav2's goal checker accepts up to yaw_goal_tolerance (0.25 rad = 14 deg); this squares the robot up,
+    e.g. in front of the screen so the camera looks straight at it. It never fails the mission: if TF or
+    the spin server is unavailable it logs a warning and carries on."""
+    def __init__(self, name, cfg_key=None, pose_key=None, tol_deg=3.0, tries=2):
+        super().__init__(name=name)
+        self.cfg_key, self.pose_key = cfg_key, pose_key
+        self.tol, self.tries = math.radians(tol_deg), tries
+
+    def setup(self, **kw):
+        if getattr(Ctx, "tf", None) is None:
+            from tf2_ros import Buffer, TransformListener
+            Ctx.tf = Buffer()
+            Ctx.tf_listener = TransformListener(Ctx.tf, Ctx.node)
+        self.client = ActionClient(Ctx.node, Spin, "spin")
+
+    def _robot_yaw(self):
+        t = Ctx.tf.lookup_transform("map", "base_footprint", rclpy.time.Time())
+        q = t.transform.rotation
+        return math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+
+    def _target_yaw(self):
+        d = BB.get(self.pose_key) if self.pose_key else Ctx.cfg["poses"][self.cfg_key]
+        return world_to_map(float(d["x"]), float(d["y"]), float(d.get("yaw", 0.0)), Ctx.map_origin)[2]
+
+    def initialise(self):
+        self.left, self.goal_future, self.result_future, self.t_sent = self.tries, None, None, 0.0
+
+    def update(self):
+        log = Ctx.node.get_logger()
+        if self.result_future is not None:                 # a spin is running
+            if not self.result_future.done():
+                if time.time() - self.t_sent > 8.0:
+                    log.warn(f"{self.name}: spin took too long - carrying on")
+                    return py_trees.common.Status.SUCCESS
+                return py_trees.common.Status.RUNNING
+            self.result_future = None
+        if self.goal_future is not None:                   # waiting for the spin to be accepted
+            if not self.goal_future.done():
+                return py_trees.common.Status.RUNNING
+            handle, self.goal_future = self.goal_future.result(), None
+            if not handle.accepted:
+                log.warn(f"{self.name}: spin rejected - carrying on")
+                return py_trees.common.Status.SUCCESS
+            self.result_future, self.t_sent = handle.get_result_async(), time.time()
+            return py_trees.common.Status.RUNNING
+        try:
+            err = self._target_yaw() - self._robot_yaw()
+            err = math.atan2(math.sin(err), math.cos(err))
+        except Exception as e:
+            log.warn(f"{self.name}: no robot heading ({e}) - carrying on")
+            return py_trees.common.Status.SUCCESS
+        if abs(err) <= self.tol:
+            log.info(f"{self.name}: aligned ({math.degrees(err):+.1f} deg)")
+            return py_trees.common.Status.SUCCESS
+        if self.left <= 0 or not self.client.server_is_ready():
+            log.warn(f"{self.name}: still {math.degrees(err):+.1f} deg off - carrying on")
+            return py_trees.common.Status.SUCCESS
+        self.left -= 1
+        goal = Spin.Goal()
+        goal.target_yaw = float(err)
+        goal.time_allowance = Duration(sec=5)
+        self.goal_future = self.client.send_goal_async(goal)
+        log.info(f"{self.name}: turning {math.degrees(err):+.1f} deg to face straight")
+        return py_trees.common.Status.RUNNING
+
+
 class NavVia(NavThroughPoses):
     """A leg that drives through corner checkpoints (mission.yaml `via:`) and ends at the leg's goal."""
     def __init__(self, name, via, pose_key=None, cfg_key=None, bt=None):
@@ -379,6 +449,7 @@ def build_tree():
 
     detect = S("WasteDetection", memory=True, children=[
         Leg("GoToScreen", cfg_key="screen", bt="nav"),
+        AlignYaw("AlignAtScreen", cfg_key="screen", tol_deg=cfg.get("screen_align_tol_deg", 3.0)),
         F("DetectOrDefault", memory=True, children=[
             retry("Retry2", 2, timeout("Detect8s", 8.0,
                   TopicVote("DetectWasteType", "/waste_type", "waste_type", WASTE_TYPES,
