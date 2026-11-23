@@ -31,7 +31,8 @@ poses_bins:
 
 routes:
   path2:                                        # flat route (gate open)
-  - {x: 1.00,  y: -1.15, yaw: 3.14}
+  - {x: 1.75,  y: -1.22, yaw: 3.14}           # drop to corridor centre before the gate
+  - {x: 1.00,  y: -1.22, yaw: 3.14}           # pass the open gate (10 cm out from the inner wall)
   - {x: 0.00,  y: -1.15, yaw: 3.14}
   - {x: -0.15, y: -0.30, yaw: 1.57}
   - {x: -0.15, y: 0.35,  yaw: 3.14}
