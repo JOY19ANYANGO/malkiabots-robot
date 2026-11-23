@@ -1,0 +1,13 @@
+[Unit]
+Description=Hailo waste detector (camera + YOLO on the Hailo AI HAT)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=malkia
+ExecStart=/home/malkia/waste/start_waste_detector.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
