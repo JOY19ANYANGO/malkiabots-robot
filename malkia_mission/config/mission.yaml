@@ -15,7 +15,7 @@ detector_enable_service: /waste/enable
 skip_stages: []
 
 poses:
-  screen:   {x: -2.485, y: -1.16, yaw: 3.14}   # stop 30 cm from the screen
+  screen:   {x: -2.485, y: -1.20, yaw: 3.14}   # centred on the screen, 30 cm away
   junction: {x: 2.00,   y: -0.95, yaw: 3.14}
   bins:     {x: -0.90,  y: -0.50, yaw: -1.57}  # face the bins
 
