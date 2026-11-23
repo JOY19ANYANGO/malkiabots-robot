@@ -1,0 +1,306 @@
+<?xml version="1.0"?>
+<!--
+  cramped_robot — 4-wheel skid-steer mobile robot
+  Generated from Main_Assembly.step (Onshape, STEP AP242) on 2026-09-23.
+
+  Frame conventions (ROS REP-103): x forward, y left, z up.
+  CAD -> URDF mapping: x_urdf = -y_cad, y_urdf = x_cad, z_urdf = z_cad  (the CAD front is -Y).
+  base_link origin = centre of the BOTTOM face of the bottom chassis plate (the CAD origin).
+  base_footprint sits on the ground plane, 0.0604 m below base_link.
+
+  Design change vs. the STEP: the inclined "Middle Plane" is cut off at roof height (z = 0.135 m in base_link)
+  so it cannot protrude into the lidar's field of view. Trim the physical plate the same way, or set
+  TRIM_MIDDLE_PLANE_TO_ROOF = False in scripts/build_from_step.py to restore it.
+
+  Links: base_footprint, base_link (chassis + brackets + 4 motor mounts + 4 gearmotors, rigid),
+         4 wheel links (continuous joints), lidar_link (front-cabin roof), imu_link (lower-cabin floor).
+
+  Mesh units: metres (pre-scaled at export). Visual meshes come straight from the STEP solids;
+  collision uses analytic primitives derived from the same solids' bounding boxes.
+
+  Mass: total_mass (2.0 kg, user estimate) is distributed in proportion to the CAD-derived link masses.
+  CAD-derived masses (volume x density; inertia tensors scale with mass):
+    chassis plates (5 mm)                     : acrylic, 1180 kg/m3   -> 1.179 kg incl. brackets
+    L-brackets / motor mounts                 : aluminium, 2700 kg/m3
+    4 x 37 mm gearmotor                        : ~0.194 kg each (typical 37D gearmotor)
+    wheel (rubber tyre + ABS hub) + brass coupling + steel D-shaft : ~0.093 kg
+  Motor limits assume a 37D 12 V gearmotor, ~100 rpm no-load, ~1 N·m stall at the wheel.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="cramped_robot">
+
+  <!-- ============================== arguments ============================== -->
+  <xacro:arg name="prefix"            default=""/>
+  <xacro:arg name="use_sim"           default="false"/>   <!-- add Gazebo (gz-sim) plugins + sensors -->
+  <xacro:arg name="use_ros2_control"  default="false"/>   <!-- add ros2_control hardware block -->
+  <xacro:arg name="mesh_pkg"          default="package://cramped_robot_description/meshes/visual"/>
+
+  <xacro:property name="prefix"   value="$(arg prefix)"/>
+  <xacro:property name="mesh_pkg" value="$(arg mesh_pkg)"/>
+  <xacro:property name="PI"       value="3.14159265358979"/>
+
+  <!-- ============================== geometry (from CAD) ============================== -->
+  <xacro:property name="wheel_radius"    value="0.0406"/>   <!-- m, tyre OD 81.2 mm -->
+  <xacro:property name="wheel_width"     value="0.0384"/>   <!-- m -->
+  <xacro:property name="wheel_x"         value="0.065"/>   <!-- m, half wheelbase (wheelbase 130 mm) -->
+  <xacro:property name="wheel_y"         value="0.108"/>   <!-- m, half track (track 215.9 mm) -->
+  <xacro:property name="axle_z"          value="-0.0198"/>   <!-- m, wheel axle height relative to base_link -->
+  <xacro:property name="ground_offset"   value="0.0604"/>   <!-- m, base_link height above ground -->
+
+  <!-- ============================== sensors ============================== -->
+  <xacro:property name="lidar_x"      value="0.085"/>   <!-- m, centre of the front-cabin roof -->
+  <xacro:property name="lidar_y"      value="0"/>
+  <xacro:property name="lidar_base_z" value="0.135"/>   <!-- m, roof top face (puck base) -->
+  <xacro:property name="lidar_radius" value="0.03"/>
+  <xacro:property name="lidar_height" value="0.035"/>
+  <xacro:property name="lidar_scan_z" value="0.025"/>   <!-- m, scan plane above the lidar base; lidar_link sits on the scan plane -->
+  <xacro:property name="imu_xyz"      value="0 0 0.005"/>  <!-- m, centre of the lower-cabin floor (bottom-plate top face) -->
+
+  <!-- ============================== masses ============================== -->
+  <!-- total_mass is the measured/estimated weight of the whole robot. It is distributed over the links in
+       proportion to the CAD-derived masses below (volume x density), so COM positions and inertia shapes
+       stay CAD-accurate while the total matches the scale. Edit total_mass, or the per-link CAD values. -->
+  <xacro:property name="total_mass"      value="2.0"/>                 <!-- kg, whole robot incl. lidar + IMU -->
+  <xacro:property name="base_mass_cad"   value="2.0586"/>   <!-- kg, acrylic plates + alu brackets/mounts + 4 gearmotors -->
+  <xacro:property name="wheel_mass_cad"  value="0.0933"/>   <!-- kg, each wheel + coupling + shaft -->
+  <xacro:property name="lidar_mass_cad"  value="0.170"/>
+  <xacro:property name="imu_mass_cad"    value="0.010"/>
+  <xacro:property name="mass_scale"  value="${total_mass / (base_mass_cad + 4*wheel_mass_cad + lidar_mass_cad + imu_mass_cad)}"/>
+  <xacro:property name="base_mass"   value="${base_mass_cad  * mass_scale}"/>
+  <xacro:property name="wheel_mass"  value="${wheel_mass_cad * mass_scale}"/>
+  <xacro:property name="lidar_mass"  value="${lidar_mass_cad * mass_scale}"/>
+  <xacro:property name="imu_mass"    value="${imu_mass_cad   * mass_scale}"/>
+
+  <!-- ============================== actuator limits ============================== -->
+  <xacro:property name="wheel_max_effort"   value="1.0"/>    <!-- N·m -->
+  <xacro:property name="wheel_max_velocity" value="10.5"/>   <!-- rad/s (~100 rpm) -->
+  <xacro:property name="wheel_damping"      value="0.01"/>
+  <xacro:property name="wheel_friction"     value="0.05"/>
+
+  <!-- ============================== materials ============================== -->
+  <material name="chassis_yellow"><color rgba="0.823 0.597 0.018 1.0"/></material>
+  <material name="tyre_black"><color rgba="0.10 0.10 0.10 1.0"/></material>
+  <material name="sensor_grey"><color rgba="0.35 0.35 0.38 1.0"/></material>
+
+  <!-- ============================== macros ============================== -->
+  <xacro:macro name="inertial_scaled" params="mass cx cy cz ixx ixy ixz iyy iyz izz">
+  <!-- inertia given per kg (from CAD geometry, uniform density per part); scales with the chosen mass -->
+  <inertial>
+    <origin xyz="${cx} ${cy} ${cz}" rpy="0 0 0"/>
+    <mass value="${mass}"/>
+    <inertia
+      ixx="${mass*ixx}"
+      ixy="${mass*ixy}"
+      ixz="${mass*ixz}"
+      iyy="${mass*iyy}"
+      iyz="${mass*iyz}"
+      izz="${mass*izz}"/>
+  </inertial>
+</xacro:macro>
+
+<xacro:macro name="box_inertial" params="mass x y z">
+  <inertial>
+    <mass value="${mass}"/>
+    <inertia
+      ixx="${mass/12*(y*y+z*z)}"
+      ixy="0"
+      ixz="0"
+      iyy="${mass/12*(x*x+z*z)}"
+      iyz="0"
+      izz="${mass/12*(x*x+y*y)}"/>
+  </inertial>
+</xacro:macro>
+
+  <xacro:macro name="cylinder_inertial" params="mass r h">
+    <inertial>
+      <mass value="${mass}"/>
+      <inertia ixx="${mass/12*(3*r*r+h*h)}" ixy="0" ixz="0" iyy="${mass/12*(3*r*r+h*h)}" iyz="0" izz="${mass/2*r*r}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!--
+    One wheel, driven directly from base_link (the gearmotor is part of base_link).
+    side_sign: +1 left / -1 right   (the right wheel is the left wheel rotated 180 deg about z: mesh yaw=pi,
+                                     COM x,y and the xz/yz inertia products change sign)
+    front_sign: +1 front / -1 rear
+  -->
+  <xacro:macro name="wheel" params="name side_sign front_sign">
+    <link name="${prefix}${name}_wheel_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 ${0 if side_sign > 0 else PI}"/>
+        <geometry><mesh filename="${mesh_pkg}/wheel.stl"/></geometry>
+        <material name="tyre_black"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="${PI/2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+      </collision>
+      <xacro:inertial_scaled mass="${wheel_mass}"
+        cx="${side_sign*-0.000007}" cy="${side_sign*0.000027}" cz="0.000001"
+        ixx="0.00054706" ixy="0.00000009" ixz="${side_sign*0.00000001}"
+        iyy="0.00089177" iyz="${side_sign*-0.00000007}" izz="0.00054702"/>
+    </link>
+    <joint name="${prefix}${name}_wheel_joint" type="continuous">
+      <parent link="${prefix}base_link"/>
+      <child  link="${prefix}${name}_wheel_link"/>
+      <origin xyz="${front_sign*wheel_x} ${side_sign*wheel_y} ${axle_z}" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit effort="${wheel_max_effort}" velocity="${wheel_max_velocity}"/>
+      <dynamics damping="${wheel_damping}" friction="${wheel_friction}"/>
+    </joint>
+    <xacro:if value="$(arg use_sim)">
+      <gazebo reference="${prefix}${name}_wheel_link">
+        <!-- mu1 = rolling direction (fdir1), mu2 = lateral. Low lateral friction lets the four
+             fixed wheels skid in turns; with mu2 = 1 the robot under-rotates and DWB's arcs miss. -->
+        <mu1>1.0</mu1><mu2>0.15</mu2>
+        <kp>1e6</kp><kd>100</kd>
+        <minDepth>0.001</minDepth>
+        <fdir1>1 0 0</fdir1>
+      </gazebo>
+    </xacro:if>
+  </xacro:macro>
+
+  <!-- ============================== base ============================== -->
+  <link name="${prefix}base_footprint"/>
+  <joint name="${prefix}base_footprint_joint" type="fixed">
+    <parent link="${prefix}base_footprint"/>
+    <child  link="${prefix}base_link"/>
+    <origin xyz="0 0 ${ground_offset}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="${prefix}base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_pkg}/base_link.stl"/></geometry>
+      <material name="chassis_yellow"/>
+    </visual>
+    <collision><!-- upper side panel002 -->
+      <origin xyz="0.08494 -0.09253 0.10002" rpy="0 0 0"/>
+      <geometry><box size="0.1 0.00507 0.06"/></geometry>
+    </collision>
+    <collision><!-- upper side panel002 -->
+      <origin xyz="0.08506 0.09247 0.09998" rpy="0 0 0"/>
+      <geometry><box size="0.1 0.00507 0.06"/></geometry>
+    </collision>
+    <collision><!-- Front support 001 -->
+      <origin xyz="0.1325 -0.00007 0.06751" rpy="0 0 0"/>
+      <geometry><box size="0.00511 0.18003 0.13502"/></geometry>
+    </collision>
+    <collision><!-- top plane -->
+      <origin xyz="0.085 -0.00002 0.1325" rpy="0 0 0"/>
+      <geometry><box size="0.10009 0.20004 0.00504"/></geometry>
+    </collision>
+    <collision><!-- Rear Support002 -->
+      <origin xyz="-0.1325 0.00009 0.03601" rpy="0 0 0"/>
+      <geometry><box size="0.00511 0.18002 0.07202"/></geometry>
+    </collision>
+    <collision><!-- Bottom chassis001 -->
+      <origin xyz="-0 0 0.0025" rpy="0 0 0"/>
+      <geometry><box size="0.2701 0.20014 0.00504"/></geometry>
+    </collision>
+    <collision><!-- Rear Support002 -->
+      <origin xyz="0.0385 -0 0.10099" rpy="0 0 0"/>
+      <geometry><box size="0.00511 0.18002 0.07202"/></geometry>
+    </collision>
+    <collision><!-- Lower Side Panel -->
+      <origin xyz="0.00094 -0.09249 0.03502" rpy="0 0 0"/>
+      <geometry><box size="0.268 0.00518 0.06"/></geometry>
+    </collision>
+    <collision><!-- Lower Side Panel -->
+      <origin xyz="0.00106 0.09251 0.03498" rpy="0 0 0"/>
+      <geometry><box size="0.268 0.00518 0.06"/></geometry>
+    </collision>
+    <collision><!-- Middle Plane (inclined plate) -->
+      <origin xyz="-0.05609 0.00427 0.07373" rpy="0 -0.69814 0"/>
+      <geometry><box size="0.19565 0.20006 0.00492"/></geometry>
+    </collision>
+    <collision><!-- front_left motor mount -->
+      <origin xyz="0.06501 0.0644 -0.0235" rpy="0 0 0"/>
+      <geometry><box size="0.04032 0.04337 0.04698"/></geometry>
+    </collision>
+    <collision><!-- front_left gearmotor -->
+      <origin xyz="0.06504 0.04812 -0.02681" rpy="0 0 0"/>
+      <geometry><box size="0.03701 0.06902 0.03701"/></geometry>
+    </collision>
+    <collision><!-- front_right motor mount -->
+      <origin xyz="0.06499 -0.06449 -0.02347" rpy="0 0 0"/>
+      <geometry><box size="0.04032 0.04338 0.04696"/></geometry>
+    </collision>
+    <collision><!-- front_right gearmotor -->
+      <origin xyz="0.06496 -0.04822 -0.02678" rpy="0 0 0"/>
+      <geometry><box size="0.03701 0.06902 0.03701"/></geometry>
+    </collision>
+    <collision><!-- rear_left motor mount -->
+      <origin xyz="-0.06499 0.06449 -0.0235" rpy="0 0 0"/>
+      <geometry><box size="0.04032 0.04337 0.04698"/></geometry>
+    </collision>
+    <collision><!-- rear_left gearmotor -->
+      <origin xyz="-0.06496 0.04821 -0.02681" rpy="0 0 0"/>
+      <geometry><box size="0.03701 0.06902 0.03701"/></geometry>
+    </collision>
+    <collision><!-- rear_right motor mount -->
+      <origin xyz="-0.06501 -0.06441 -0.02347" rpy="0 0 0"/>
+      <geometry><box size="0.04032 0.04338 0.04696"/></geometry>
+    </collision>
+    <collision><!-- rear_right gearmotor -->
+      <origin xyz="-0.06504 -0.04814 -0.02678" rpy="0 0 0"/>
+      <geometry><box size="0.03701 0.06902 0.03701"/></geometry>
+    </collision>
+    <xacro:inertial_scaled mass="${base_mass}"
+      cx="0.006922" cy="0.000498" cz="0.021751"
+      ixx="0.00666097" ixy="0.00002855" ixz="-0.00101173"
+      iyy="0.00956853" iyz="-0.00002599" izz="0.01049559"/>
+  </link>
+
+  <!-- ============================== wheels ============================== -->
+  <xacro:wheel name="front_left"  side_sign="1"  front_sign="1"/>
+  <xacro:wheel name="front_right" side_sign="-1" front_sign="1"/>
+  <xacro:wheel name="rear_left"   side_sign="1"  front_sign="-1"/>
+  <xacro:wheel name="rear_right"  side_sign="-1" front_sign="-1"/>
+
+  <!-- ============================== lidar: top of the front cabin ============================== -->
+  <!-- lidar_link origin is on the scan plane (lidar_scan_z above the roof); the puck's base sits on the roof -->
+  <!-- The puck visual stops 3 mm BELOW the scan plane (link origin): a visual that encloses the
+       sensor origin makes the simulated lidar see its own housing as a ring of 0.15 m returns. -->
+  <xacro:property name="lidar_body_h" value="${lidar_scan_z - 0.003}"/>
+  <link name="${prefix}lidar_link">
+    <visual>
+      <origin xyz="0 0 ${-lidar_scan_z + lidar_body_h/2}" rpy="0 0 0"/>
+      <geometry><cylinder radius="${lidar_radius}" length="${lidar_body_h}"/></geometry>
+      <material name="sensor_grey"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${-lidar_scan_z + lidar_body_h/2}" rpy="0 0 0"/>
+      <geometry><cylinder radius="${lidar_radius}" length="${lidar_body_h}"/></geometry>
+    </collision>
+    <xacro:cylinder_inertial mass="${lidar_mass}" r="${lidar_radius}" h="${lidar_height}"/>
+  </link>
+  <joint name="${prefix}lidar_joint" type="fixed">
+    <parent link="${prefix}base_link"/>
+    <child  link="${prefix}lidar_link"/>
+    <origin xyz="${lidar_x} ${lidar_y} ${lidar_base_z + lidar_scan_z}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ============================== IMU: floor of the lower cabin ============================== -->
+  <link name="${prefix}imu_link">
+    <visual>
+      <origin xyz="0 0 0.0025" rpy="0 0 0"/>
+      <geometry><box size="0.02 0.02 0.005"/></geometry>
+      <material name="sensor_grey"/>
+    </visual>
+    <xacro:box_inertial mass="${imu_mass}" x="0.02" y="0.02" z="0.005"/>
+  </link>
+  <joint name="${prefix}imu_joint" type="fixed">
+    <parent link="${prefix}base_link"/>
+    <child  link="${prefix}imu_link"/>
+    <origin xyz="${imu_xyz}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ============================== simulation / control ============================== -->
+  <xacro:if value="$(arg use_sim)">
+    <xacro:include filename="cramped_robot.gazebo.xacro"/>
+  </xacro:if>
+  <xacro:if value="$(arg use_ros2_control)">
+    <xacro:include filename="cramped_robot.ros2_control.xacro"/>
+  </xacro:if>
+
+</robot>

@@ -1,0 +1,23 @@
+# colcon output
+build/
+install/
+log/
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+# backups made while tuning on the robot
+*.before_*
+*.old
+*.bak*
+*.orig
+*.current_*
+*~
+# third-party lidar driver: cloned separately (see dependencies.repos)
+sllidar_ros2/
+# large or generated files
+*.hef
+*.posegraph
+*.data
+mission_events*.csv
+hailort.log

@@ -1,0 +1,30 @@
+log_file: ~/maps/mission_events.csv
+field_bounds:
+- [-5.06, 2.17]
+- [-3.55, 0.84]
+min_votes: 10
+min_share: 0.7
+gate_wait_s: 10.0
+terrain_speed: 0.12
+offload_open_s: 2.5
+bt_files: {nav: navigate_to_pose_no_spin.xml, terrain: navigate_through_poses_terrain.xml}
+poses:
+  screen: {x: 1.173, y: -0.296, yaw: 0.0}
+  junction: {x: -4.064, y: -0.359, yaw: 0.0}
+  bins: {x: -0.784, y: -1.859, yaw: 0.0}
+  finish: {x: -0.746, y: -0.246, yaw: 0.0}
+poses_loading:
+  plastic: {x: 0.643, y: -2.554, yaw: 0.0}
+  metal: {x: 0.628, y: -1.542, yaw: 0.0}
+  organic: {x: 0.648, y: -2.04, yaw: 0.0}
+poses_bins:
+  plastic: {x: 0.396, y: -0.871, yaw: 0.0}
+  organic: {x: -0.117, y: -0.157, yaw: 0.0}
+  metal: {x: -0.73, y: -0.272, yaw: 0.0}
+routes:
+  path2:
+  - {x: -2.515, y: -0.32, yaw: 0.0}
+  path1:
+  - {x: -2.339, y: -0.983, yaw: 0.0}
+skip_stages: []
+detector_enable_service: /waste/enable

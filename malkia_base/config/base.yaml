@@ -1,0 +1,26 @@
+base_node:
+  ros__parameters:
+    port: /dev/ttyUSB0       # launch argument port:=... overrides this
+    baud: 115200
+    # wheel_diameter (65 mm) and ticks_per_rev (1980) are confirmed. track_width is measured (22 cm); max_wheel_speed is still an estimate.
+    wheel_diameter: 0.065      # m
+    track_width: 0.36          # m, measured between the front wheels (skid steer turns wider, see spin test)
+    ticks_per_rev: 1980.0      # encoder counts per wheel turn
+    max_wheel_speed: 0.47      # m/s at PWM 255, estimated from the encoder counts (measure it)
+    max_pwm: 150               # ROS never sends more power than this (0-255). Lower = slower
+    heading_gain: 0.0          # OLD heading hold on the Nano: off (it used the uncalibrated gyro)
+    ros_heading_hold: false     # NEW heading hold in ROS, with gyro offset removed
+    heading_kp: 2.5            # how hard it steers back to straight (raise to 4 if it still drifts)
+    heading_ki: 1.5            # removes the small leftover pull of a weaker motor side
+    gyro_calib_time: 3.0       # s - keep the robot STILL for this long after starting
+    gyro_z_sign: 1.0           # set -1.0 if the log says the gyro sign is REVERSED
+    left_trim: 1.0             # e.g. 1.05 = left motors get 5% more power
+    right_trim: 1.0
+    nano_split_fl: false       # false = one speed loop per side on the Nano (stops the left loops fighting)
+    drift_report: true         # print a report in the terminal after each teleop move
+    cmd_timeout: 0.5           # s without cmd_vel -> stop
+    publish_imu: false          # published only while the IMU is detected (automatic)
+    publish_tf: true
+    odom_frame: odom
+    base_frame: base_footprint
+    imu_frame: imu_link

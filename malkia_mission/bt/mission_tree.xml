@@ -1,0 +1,106 @@
+<?xml version="1.0"?>
+<!--
+  Robotics Dojo 2026 — mission behaviour tree (documentation / Groot2 view).
+  The runnable implementation is malkia_mission/mission_tree.py (py_trees_ros); node names match.
+  Autonomous phase, in the order the rulebook requires:
+    detect waste at the screen -> load at the matching station -> junction: gate decision ->
+    path 2 (flat, gated) or path 1 (ramps/terrain) -> bins: pick the colour for the waste type ->
+    deposit -> finish.  Timestamps are logged at every rule-book event (section 8, Required Data).
+-->
+<root BTCPP_format="4" main_tree_to_execute="Mission">
+
+  <BehaviorTree ID="Mission">
+    <Parallel success_count="1" failure_count="1">
+      <!-- background: logs the first dynamic-obstacle stop/slowdown from the collision monitor -->
+      <ObstacleMonitor topic="/collision_monitor_state" event="obstacle_detected"/>
+
+      <Sequence name="AutonomousPhase">
+        <LogEvent event="autonomous_start"/>
+
+        <!-- ================= 1. WASTE DETECTION ================= -->
+        <Sequence name="WasteDetection">
+          <NavigateToPose goal="{pose_screen}" bt="nav"/>
+          <Fallback>
+            <RetryUntilSuccessful num_attempts="3">
+              <Timeout msec="15000">
+                <DetectWasteType topic="/waste_type" min_votes="3" output="{waste_type}"/>
+              </Timeout>
+            </RetryUntilSuccessful>
+            <SetBlackboard output_key="waste_type" value="{waste_type_default}"/>   <!-- type assigned at start -->
+          </Fallback>
+          <LogEvent event="waste_detected" detail="{waste_type}"/>
+        </Sequence>
+
+        <!-- ================= 2. LOADING ================= -->
+        <Sequence name="Loading">
+          <SelectPose table="{poses_loading}" key="{waste_type}" output="{pose_loading}"/>
+          <NavigateToPose goal="{pose_loading}" bt="nav" xy_tolerance="0.05"/>
+          <RetryUntilSuccessful num_attempts="2">
+            <Timeout msec="20000">
+              <LoadItem request_topic="/loading/request" done_topic="/loading/done" waste_type="{waste_type}"/>
+            </Timeout>
+          </RetryUntilSuccessful>
+          <LogEvent event="loading_completed"/>
+        </Sequence>
+
+        <!-- ================= 3. ROUTE DECISION (time-based gate) ================= -->
+        <Sequence name="RouteDecision">
+          <NavigateToPose goal="{pose_junction}" bt="nav"/>
+          <Fallback name="ChooseRoute">
+            <!-- one timer for the whole wait: open on arrival (wait 0) or opens within the standard wait -> path 2 -->
+            <Sequence name="Path2">
+              <Timeout msec="{gate_wait_msec}">
+                <WaitForGate topic="/gate_open" waited_output="{gate_wait}" on_arrival_output="{gate_wait_on_arrival}"/>
+              </Timeout>
+              <GateRoute on_arrival="{gate_wait_on_arrival}" output="{gate_route}"/>   <!-- path2_open | path2_after_wait -->
+              <LogEvent event="gate_waiting_time" detail="{gate_wait}"/>
+              <LogEvent event="gate_decision" detail="{gate_route}"/>
+              <NavigateThroughPoses goals="{path2}" bt="nav"/>
+            </Sequence>
+            <!-- gate stayed closed for the whole standard wait: divert to the ramps, speed capped while on them -->
+            <Sequence name="Path1">
+              <LogEvent event="gate_decision" detail="path1_divert"/>
+              <SpeedCapped topic="/speed_limit" speed="{terrain_speed}">   <!-- cap cleared however the child ends -->
+                <NavigateThroughPoses goals="{path1}" bt="terrain"/>
+              </SpeedCapped>
+            </Sequence>
+          </Fallback>
+          <LogEvent event="terrain_completed"/>
+        </Sequence>
+
+        <!-- ================= 4. DEPOSITING ================= -->
+        <Sequence name="Depositing">
+          <NavigateToPose goal="{pose_bins}" bt="nav"/>
+          <Fallback>
+            <Timeout msec="10000">
+              <DetectBinColour topic="/bin_colour" waste_type="{waste_type}" output="{pose_bin}" table="{poses_bins}"/>
+            </Timeout>
+            <SelectPose table="{poses_bins}" key="{waste_type}" output="{pose_bin}"/>   <!-- colours are fixed by rule: blue/white/black -->
+          </Fallback>
+          <NavigateToPose goal="{pose_bin}" bt="nav" xy_tolerance="0.04" yaw_tolerance="0.1"/>
+          <Offload gate_topic="/gate" open_msec="2500"/>
+          <LogEvent event="depositing_completed"/>
+        </Sequence>
+
+        <!-- ================= 5. FINISH ================= -->
+        <NavigateToPose goal="{pose_finish}" bt="nav"/>
+        <LogEvent event="finish"/>
+      </Sequence>
+    </Parallel>
+  </BehaviorTree>
+
+  <TreeNodesModel>
+    <Action ID="NavigateToPose"><input_port name="goal"/><input_port name="bt"/><input_port name="xy_tolerance"/><input_port name="yaw_tolerance"/></Action>
+    <Action ID="NavigateThroughPoses"><input_port name="goals"/><input_port name="bt"/></Action>
+    <Action ID="DetectWasteType"><input_port name="topic"/><input_port name="min_votes"/><output_port name="output"/></Action>
+    <Action ID="DetectBinColour"><input_port name="topic"/><input_port name="waste_type"/><input_port name="table"/><output_port name="output"/></Action>
+    <Action ID="WaitForGate"><input_port name="topic"/><output_port name="waited_output"/><output_port name="on_arrival_output"/></Action>
+    <Action ID="GateRoute"><input_port name="on_arrival"/><output_port name="output"/></Action>
+    <Decorator ID="SpeedCapped"><input_port name="topic"/><input_port name="speed"/></Decorator>
+    <Action ID="LoadItem"><input_port name="request_topic"/><input_port name="done_topic"/><input_port name="waste_type"/></Action>
+    <Action ID="Offload"><input_port name="gate_topic"/><input_port name="open_msec"/></Action>
+    <Action ID="SelectPose"><input_port name="table"/><input_port name="key"/><output_port name="output"/></Action>
+    <Action ID="LogEvent"><input_port name="event"/><input_port name="detail"/></Action>
+    <Action ID="ObstacleMonitor"><input_port name="topic"/><input_port name="event"/></Action>
+  </TreeNodesModel>
+</root>
