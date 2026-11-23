@@ -1,0 +1,71 @@
+# Malkiabots mission - poses on the gamefield_nopillars map (CAD / world frame, map origin 0 0 0)
+log_file: ~/maps/mission_events.csv
+field_bounds:
+- [-3.0, 3.0]
+- [-1.53, 1.53]
+min_votes: 10
+min_share: 0.7
+gate_wait_s: 5.0              # wait up to 5 s at the junction for the lidar to see the gate open
+load_wait_s: 5.0              # fixed wait at the loading station (no signal from the station)
+terrain_speed: 0.12
+offload_open_s: 2.5
+drive_to_finish: false          # the run ends at the bin
+bt_files: {nav: navigate_to_pose_no_spin.xml, terrain: navigate_through_poses_terrain.xml}
+detector_enable_service: /waste/enable
+skip_stages: []
+
+poses:
+  screen:   {x: -2.485, y: -1.16, yaw: 3.14}   # stop 30 cm from the screen
+  junction: {x: 2.00,   y: -0.95, yaw: 3.14}
+  bins:     {x: -0.90,  y: -0.50, yaw: -1.57}  # face the bins
+
+poses_loading:                                  # tail 75 cm from the wall
+  plastic: {x: -2.115, y: 1.189, yaw: 0.0}      # top chute
+  organic: {x: -2.115, y: 0.619, yaw: 0.0}      # middle chute
+  metal:   {x: -2.115, y: 0.049, yaw: 0.0}      # chute nearest the start
+
+poses_bins:
+  plastic: {x: -1.83, y: -0.50, yaw: -1.57}
+  organic: {x: -1.47, y: -1.13, yaw: -1.57}
+  metal:   {x: -0.89, y: -1.13, yaw: -1.57}
+
+routes:
+  path2:                                        # flat route (gate open)
+  - {x: 1.00,  y: -1.15, yaw: 3.14}
+  - {x: 0.00,  y: -1.15, yaw: 3.14}
+  - {x: -0.15, y: -0.30, yaw: 1.57}
+  - {x: -0.15, y: 0.35,  yaw: 3.14}
+  - {x: -0.90, y: 0.35,  yaw: -1.57}
+  - {x: -0.90, y: -0.50, yaw: -1.57}
+  path1:                                        # grass route (gate closed)
+  - {x: 0.90,  y: -0.50, yaw: 3.14}
+  - {x: 0.00,  y: -0.50, yaw: 3.14}
+  - {x: -0.15, y: -0.30, yaw: 1.57}
+  - {x: -0.15, y: 0.35,  yaw: 3.14}
+  - {x: -0.90, y: 0.35,  yaw: -1.57}
+  - {x: -0.90, y: -0.50, yaw: -1.57}
+
+# Corner checkpoints: the robot drives through these on the way to each leg's goal
+via:
+  GoToLoading:
+    plastic: [{x: -2.465, y: 1.099, yaw: 0.29}]
+    organic: [{x: -2.485, y: 0.559, yaw: 0.22}]
+    metal:   [{x: -2.485, y: 0.059, yaw: 0.0}]
+  GoToJunction:
+    plastic:
+    - {x: 2.555, y: 1.119,  yaw: -1.6}
+    - {x: 2.495, y: -1.081, yaw: 2.83}
+    organic:
+    - {x: -1.605, y: 0.719,  yaw: 0.92}
+    - {x: -1.285, y: 1.139,  yaw: -0.01}
+    - {x: 2.555,  y: 1.119,  yaw: -1.6}
+    - {x: 2.495,  y: -1.081, yaw: 2.83}
+    metal:
+    - {x: -1.665, y: 0.119,  yaw: 1.32}
+    - {x: -1.405, y: 1.139,  yaw: -0.01}
+    - {x: 2.555,  y: 1.119,  yaw: -1.6}
+    - {x: 2.495,  y: -1.081, yaw: 2.83}
+  GoToBin:
+    plastic: []
+    organic: [{x: -1.465, y: -0.721, yaw: -1.57}]
+    metal: []
