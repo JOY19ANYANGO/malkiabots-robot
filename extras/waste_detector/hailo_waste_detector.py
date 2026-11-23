@@ -221,6 +221,7 @@ class HailoWasteDetector(Node):
         self.class_pub = self.create_publisher(String, "waste/class", 10)
         self.station_pub = self.create_publisher(String, "waste/station", 10)
         self.image_pub = self.create_publisher(CompressedImage, "waste/image/compressed", 5)
+        self.vote_pub = self.create_publisher(String, "/waste_type", 10)
         self.create_service(SetBool, "waste/enable", self.on_enable)
         self.create_service(Trigger, "waste/reset", self.on_reset)
 
@@ -291,6 +292,9 @@ class HailoWasteDetector(Node):
             detections = select_detections(boxes, scores, class_ids,
                                            (scale, pad_x, pad_y),
                                            self.args.conf, self.args.nms)
+            if detections:
+                best = max(detections, key=lambda d: d[1])[0]
+                self.vote_pub.publish(String(data=best))
             newly = self.decision.update(detections)
             if newly:
                 self.get_logger().info(f"DECIDED: {newly} -> {STATION[newly]} station")
