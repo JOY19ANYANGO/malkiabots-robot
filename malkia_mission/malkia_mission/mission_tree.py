@@ -492,6 +492,7 @@ def build_tree():
         Leg("GoToBins", cfg_key="bins", bt="nav"),
         SelectPose("poses_bins", "waste_type", "pose_bin"),        # colour is fixed by rule: blue/white/black
         Leg("GoToBin", pose_key="pose_bin", bt="nav"),
+        AlignYaw("AlignAtBin", pose_key="pose_bin", tol_deg=cfg.get("bin_align_tol_deg", 3.0)),
         Offload(cfg["offload_open_s"]),
         LogEvent("depositing_completed"),
     ])
