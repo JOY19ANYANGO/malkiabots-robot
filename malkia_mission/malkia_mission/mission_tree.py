@@ -30,7 +30,7 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseStamped
 from builtin_interfaces.msg import Duration
-from nav2_msgs.action import NavigateThroughPoses, NavigateToPose, Spin
+from nav2_msgs.action import BackUp, DriveOnHeading, NavigateThroughPoses, NavigateToPose, Spin
 from rclpy.action import ActionClient
 from nav2_msgs.msg import CollisionMonitorState, SpeedLimit
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -415,6 +415,97 @@ class AlignYaw(py_trees.behaviour.Behaviour):
         return py_trees.common.Status.RUNNING
 
 
+class DockAt(AlignYaw):
+    """Dock exactly on a pose: square up to its yaw (spin), then drive straight forward or back so the
+    robot sits on the pose along its heading (DriveOnHeading / BackUp), then square up once more.
+    Nav2 stops anywhere within xy_goal_tolerance (12 cm) and 14 deg; this brings it to ~2 cm and ~3 deg.
+    Sideways error cannot be fixed by a skid-steer without re-approaching, so it is only logged.
+    Like AlignYaw it never fails the mission."""
+    def __init__(self, name, cfg_key=None, pose_key=None, tol_deg=3.0, tol_m=0.02, speed=0.08):
+        super().__init__(name, cfg_key=cfg_key, pose_key=pose_key, tol_deg=tol_deg, tries=1)
+        self.tol_m, self.speed = tol_m, speed
+
+    def setup(self, **kw):
+        super().setup(**kw)
+        self.drive = ActionClient(Ctx.node, DriveOnHeading, "drive_on_heading")
+        self.backup = ActionClient(Ctx.node, BackUp, "backup")
+
+    def _robot_pose(self):
+        t = Ctx.tf.lookup_transform("map", "base_footprint", rclpy.time.Time())
+        q = t.transform.rotation
+        yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+        return t.transform.translation.x, t.transform.translation.y, yaw
+
+    def _target(self):
+        d = BB.get(self.pose_key) if self.pose_key else Ctx.cfg["poses"][self.cfg_key]
+        return world_to_map(float(d["x"]), float(d["y"]), float(d.get("yaw", 0.0)), Ctx.map_origin)
+
+    def initialise(self):
+        self.steps, self.future, self.result, self.t_sent = ["spin", "drive", "spin"], None, None, 0.0
+
+    def update(self):
+        log = Ctx.node.get_logger()
+        if self.result is not None:                        # a manoeuvre is running
+            if not self.result.done():
+                if time.time() - self.t_sent > 10.0:
+                    log.warn(f"{self.name}: manoeuvre took too long - carrying on")
+                    return py_trees.common.Status.SUCCESS
+                return py_trees.common.Status.RUNNING
+            self.result = None
+        if self.future is not None:                        # waiting for it to be accepted
+            if not self.future.done():
+                return py_trees.common.Status.RUNNING
+            handle, self.future = self.future.result(), None
+            if handle.accepted:
+                self.result, self.t_sent = handle.get_result_async(), time.time()
+                return py_trees.common.Status.RUNNING
+            log.warn(f"{self.name}: manoeuvre rejected - skipping it")
+        while self.steps:
+            step = self.steps.pop(0)
+            try:
+                x, y, yaw = self._robot_pose()
+                tx, ty, tyaw = self._target()
+            except Exception as e:
+                log.warn(f"{self.name}: no robot pose ({e}) - carrying on")
+                return py_trees.common.Status.SUCCESS
+            if step == "spin":
+                err = math.atan2(math.sin(tyaw - yaw), math.cos(tyaw - yaw))
+                if abs(err) <= self.tol or not self.client.server_is_ready():
+                    continue
+                goal = Spin.Goal()
+                goal.target_yaw = float(err)
+                goal.time_allowance = Duration(sec=5)
+                log.info(f"{self.name}: turning {math.degrees(err):+.1f} deg to square up")
+                self.future = self.client.send_goal_async(goal)
+                return py_trees.common.Status.RUNNING
+            along = (tx - x) * math.cos(tyaw) + (ty - y) * math.sin(tyaw)
+            if abs(along) <= self.tol_m:
+                continue
+            if along > 0:
+                client, goal = self.drive, DriveOnHeading.Goal()
+            else:
+                client, goal = self.backup, BackUp.Goal()
+            if not client.server_is_ready():
+                log.warn(f"{self.name}: drive/backup server not ready - skipping distance fix")
+                continue
+            goal.target.x = abs(float(along))
+            goal.speed = float(self.speed)
+            goal.time_allowance = Duration(sec=8)
+            log.info(f"{self.name}: {'forward' if along > 0 else 'back'} {abs(along) * 100:.1f} cm to the docking spot")
+            self.future = client.send_goal_async(goal)
+            return py_trees.common.Status.RUNNING
+        try:
+            x, y, yaw = self._robot_pose()
+            tx, ty, tyaw = self._target()
+            along = (tx - x) * math.cos(tyaw) + (ty - y) * math.sin(tyaw)
+            side = -(tx - x) * math.sin(tyaw) + (ty - y) * math.cos(tyaw)
+            err = math.atan2(math.sin(tyaw - yaw), math.cos(tyaw - yaw))
+            log.info(f"{self.name}: docked - {along * 100:+.1f} cm along, {side * 100:+.1f} cm sideways, {math.degrees(err):+.1f} deg")
+        except Exception:
+            pass
+        return py_trees.common.Status.SUCCESS
+
+
 class NavVia(NavThroughPoses):
     """A leg that drives through corner checkpoints (mission.yaml `via:`) and ends at the leg's goal."""
     def __init__(self, name, via, pose_key=None, cfg_key=None, bt=None):
@@ -463,6 +554,7 @@ def build_tree():
     loading = S("Loading", memory=True, children=[
         SelectPose("poses_loading", "waste_type", "pose_loading"),
         Leg("GoToLoading", pose_key="pose_loading", bt="nav"),
+        DockAt("DockAtLoading", pose_key="pose_loading", tol_deg=cfg.get("loading_align_tol_deg", 3.0)),
         LoadItem(cfg.get("load_wait_s", 5.0)),
         LogEvent("loading_completed"),
     ])

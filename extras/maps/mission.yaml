@@ -19,10 +19,10 @@ poses:
   junction: {x: 2.00,   y: -0.95, yaw: 3.14}
   bins:     {x: -0.90,  y: -0.50, yaw: -1.57}  # face the bins
 
-poses_loading:                                  # tail 75 cm from the wall
-  plastic: {x: -2.115, y: 1.189, yaw: 0.0}      # top chute
-  organic: {x: -2.115, y: 0.619, yaw: 0.0}      # middle chute
-  metal:   {x: -2.115, y: 0.049, yaw: 0.0}      # chute nearest the start
+poses_loading:                                  # tail 75 cm from the wall (wall face x=-2.975, tail 0.14 m behind centre)
+  plastic: {x: -2.085, y: 1.189, yaw: 0.0}      # top chute
+  organic: {x: -2.085, y: 0.619, yaw: 0.0}      # middle chute
+  metal:   {x: -2.085, y: 0.049, yaw: 0.0}      # chute nearest the start
 
 poses_bins:
   plastic: {x: -1.83, y: -0.50, yaw: -1.57}
