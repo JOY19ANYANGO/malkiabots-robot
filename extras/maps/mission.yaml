@@ -25,9 +25,9 @@ poses_loading:                                  # tail 75 cm from the wall (wall
   metal:   {x: -2.085, y: 0.049, yaw: 0.0}      # chute nearest the start
 
 poses_bins:
-  plastic: {x: -1.83, y: -0.50, yaw: -1.57}
-  organic: {x: -1.47, y: -1.13, yaw: -1.57}
-  metal:   {x: -0.89, y: -1.13, yaw: -1.57}
+  plastic: {x: -1.83, y: -0.55, yaw: -1.57}
+  organic: {x: -1.47, y: -1.18, yaw: -1.57}
+  metal:   {x: -0.89, y: -1.18, yaw: -1.57}
 
 routes:
   path2:                                        # flat route (gate open)
