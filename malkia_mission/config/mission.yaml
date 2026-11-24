@@ -70,3 +70,4 @@ via:
     plastic: []
     organic: [{x: -1.465, y: -0.721, yaw: -1.57}]
     metal: []
+loading_align_tol_deg: 1.5      # square up at loading to 1.5 deg (screen and bins: 3 deg)
