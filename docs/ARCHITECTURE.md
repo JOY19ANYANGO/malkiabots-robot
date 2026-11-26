@@ -8,7 +8,7 @@ and **what do I do next** (the mission tree). Everything talks over ROS 2 topics
 flowchart LR
   subgraph HW[Robot hardware]
     LIDAR[RPLIDAR A1]
-    NANO[Arduino Nano<br/>encoders, motors,<br/>MPU6050, servo gate]
+    NANO[Arduino Nano firmware/Nano_code<br/>speed PID, 4 encoders,<br/>MPU6050, servo gate]
     CAM[Pi camera]
   end
   subgraph PI[Raspberry Pi 5]
@@ -44,6 +44,13 @@ flowchart LR
   RI -- /gate_open --> MT
   MT -- /gate --> BASE
 ```
+
+## Low level (Arduino Nano)
+
+`base_node` sends `M <left> <right>` (-255..255, a fraction of top speed) and the Nano closes the loop on
+wheel speed itself (PI on encoder ticks/s, feed-forward, soft start, gyro heading hold when driving straight,
+stall cut-off, 500 ms command timeout). It streams `D,...` telemetry (IMU + 4 encoders) every 50 ms, which
+`base_node` turns into `/odom`. Protocol and wiring: [firmware/README.md](../firmware/README.md).
 
 ## Frames (TF)
 

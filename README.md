@@ -18,15 +18,16 @@ This repository is the `src/` folder of the ROS 2 workspace (`~/ros2_ws/src`).
 | Folder | What it is |
 |---|---|
 | `malkia_base/` | Base driver. `base_node` turns encoder ticks into `/odom` + TF `odom -> base_footprint`, turns `/cmd_vel` into motor PWM and `/gate` into servo open/close. `launch/bringup.launch.py` starts it with the lidar and the robot model. Settings: `config/base.yaml` (track width 0.36, wheel 0.065 m, 1980 ticks/rev). |
-| `cramped_robot_description/` | Robot model (URDF), Nav2 settings (`config/nav2_params.yaml`), SLAM settings, the `navigation`, `mapping` and simulation launch files, the Gazebo field and the Nano firmware. |
+| `cramped_robot_description/` | Robot model (URDF), Nav2 settings (`config/nav2_params.yaml`), SLAM settings, the `navigation`, `mapping` and simulation launch files and the Gazebo field. (Its `firmware/` folder is a legacy sketch: not the robot's.) |
 | `malkia_mission/` | The mission behaviour tree (`malkia_mission/mission_tree.py`), the Nav2 trees it uses (`bt/`) and the mission poses (`config/mission.yaml`). |
+| `firmware/Nano_code/` | **Arduino Nano firmware** running on the robot: closed-loop motor speed control, 4 encoders, MPU6050, gate servo, serial protocol to `base_node`. See [firmware/README.md](firmware/README.md). |
 | `extras/waste_detector/` | Hailo YOLO waste detector and the systemd service that starts the camera stream and the detector at boot. |
 | `extras/scripts/real_inputs.py` | Lidar gate check (`/gate_open`) and loading timer. |
 | `extras/maps/` | Navigation map `gamefield_nopillars` and the copy of `mission.yaml` the robot runs from (`~/maps/mission.yaml`). |
 | `extras/sync_extras.sh` | Copies the files that run from the home folder into this repo. Run it before every commit on the Pi. |
 | `docs/` | [Architecture](docs/ARCHITECTURE.md), [run sheet](docs/RUN_SHEET.md) ([PDF](docs/run_sheet.pdf)), [tuning notes](docs/TUNING.md), [troubleshooting](docs/TROUBLESHOOTING.md). |
 
-`extras/` and `docs/` carry a `COLCON_IGNORE`, so `colcon build` skips them. The lidar driver
+`firmware/`, `extras/` and `docs/` carry a `COLCON_IGNORE`, so `colcon build` skips them. The lidar driver
 `sllidar_ros2` is not stored here: it is cloned from Slamtec (`dependencies.repos`).
 
 ## Install on the Pi
@@ -49,6 +50,8 @@ cp src/extras/maps/* ~/maps/
 sudo cp ~/waste/waste-detector.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now waste-detector
 ```
+
+Flash the Nano from `firmware/Nano_code/` (see [firmware/README.md](firmware/README.md)).
 
 Not in git (copy them by hand): the Hailo model `~/waste/waste.hef` (YOLO26n, 2026-11-19 build, compiled for
 Hailo-8L) and the HailoRT 4.23.0 Python environment `~/hailo_venv`.
